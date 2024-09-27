@@ -1,4 +1,6 @@
 import {PlaywrightCrawler, Dataset, FileDownload} from 'crawlee';
+import {findRecipeDifficulty} from "./utils/RecipeDifficulty.js";
+import {findRecipePrice} from "./utils/RecipePrice.js";
 
 let fileDownload = new FileDownload({
     async requestHandler({ body, request, contentType, getKeyValueStore }) {
@@ -26,6 +28,8 @@ const crawler = new PlaywrightCrawler({
             rest_time: rest_time,
             cook: cook_time
         };
+        let difficulty = findRecipeDifficulty((await page.locator('div.recipe-primary__item:nth-child(3) span').textContent()));
+        let price = findRecipePrice((await page.locator('div.recipe-primary__item:nth-child(5) span').textContent()));
 
         for (const img of (await page.locator('.recipe-media-viewer img').all())) {
             await img.getAttribute('src').then((src) => {
@@ -36,6 +40,22 @@ const crawler = new PlaywrightCrawler({
             });
         }
 
+        let ingredients = [];
+        for (const ingredient of (await page.locator('.mrtn-recette_ingredients .card-ingredient').all())) {
+           let quantity = (await ingredient.evaluate((el) => el.querySelector('.card-ingredient-quantity').getAttribute('data-ingredientquantity')));
+           let quantity_unit = (await ingredient.evaluate((el) => el.querySelector('.card-ingredient-quantity .unit').textContent)).trim();
+           let quantity_text = (await ingredient.evaluate((el) => el.querySelector('.card-ingredient-quantity').textContent)).trim().replaceAll(/\r\n|\n|\r/gm, '').replaceAll(/([\ ]{2,})/gm, ' ');
+           let label = (await ingredient.evaluate((el) => el.querySelector('.ingredient-name').textContent)).trim();
+           let singular = (await ingredient.evaluate((el) => el.querySelector('.ingredient-name').getAttribute('data-ingredientnamesingular')));
+           ingredients.push({
+                quantity: quantity,
+                quantity_unit: quantity_unit,
+                quantity_text: quantity_text,
+                label: label,
+                singular: singular
+           })
+        }
+
         log.info(`Title of ${request.loadedUrl} is '${title}'`);
 
         // Save results as JSON to ./storage/datasets/default
@@ -44,7 +64,10 @@ const crawler = new PlaywrightCrawler({
                 title: title,
                 url: request.loadedUrl,
                 pictures: pictures,
-                time: time
+                time: time,
+                difficulty: difficulty,
+                price: price,
+                ingredients: ingredients
             });
 
         // Extract links from the current page
